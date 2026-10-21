@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       batch_id:
-        description: Exact batch ID of one previously persisted skin with deleted files
+        description: Exact batch ID of previously persisted skins with deleted files
         required: true
         type: string
 permissions:
