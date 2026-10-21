@@ -144,7 +144,10 @@ class PteroClient:
         deadline = self.clock() + timeout_s
         while self.clock() < deadline:
             try:
-                receipt = self.api('files/contents?' + urllib.parse.urlencode({'file': f'/scriptfiles/model_sync/{batch_id}.json'}))
+                receipt = self.existing_receipt(batch_id)
+                if receipt is None:
+                    self.sleep(5)
+                    continue
                 if receipt.get('version') != 1 or receipt.get('batch_id') != batch_id:
                     raise SyncError('Receipt does not match requested batch/version')
                 if receipt.get('complete') is True:
@@ -158,6 +161,13 @@ class PteroClient:
         if not HEX.fullmatch(batch_id):
             raise SyncError('Invalid batch ID')
         try:
+            # Some panels return HTTP 500 for missing contents. Prove existence first.
+            parent = self.api('files/list?' + urllib.parse.urlencode({'directory': '/scriptfiles'}))
+            if not any(row['attributes']['name'] == 'model_sync' and not row['attributes']['is_file'] for row in parent['data']):
+                return None
+            listing = self.api('files/list?' + urllib.parse.urlencode({'directory': '/scriptfiles/model_sync'}))
+            if not any(row['attributes']['name'] == batch_id + '.json' and row['attributes']['is_file'] for row in listing['data']):
+                return None
             return self.api('files/contents?' + urllib.parse.urlencode({'file': f'/scriptfiles/model_sync/{batch_id}.json'}))
         except FileNotFoundError:
             return None

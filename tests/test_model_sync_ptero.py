@@ -37,7 +37,7 @@ class PteroTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
     def test_mismatched_receipt_rejected(self):
-        client, _ = self.client([{'version': 1, 'batch_id': 'b' * 64, 'complete': True, 'items': []}])
+        client, _ = self.client([{'data': [{'attributes': {'name': 'model_sync', 'is_file': False}}]}, {'data': [{'attributes': {'name': 'a' * 64 + '.json', 'is_file': True}}]}, {'version': 1, 'batch_id': 'b' * 64, 'complete': True, 'items': []}])
         with self.assertRaises(SyncError): client.poll_receipt('a' * 64)
 
     def test_insecure_signed_url_rejected(self):
@@ -111,3 +111,30 @@ class DiagnosticTests(unittest.TestCase):
             client.api('files/contents?file=private-path')
         self.assertNotIn('private-path', str(raised.exception))
         self.assertNotIn('secret', str(raised.exception))
+
+
+class MissingReceiptTests(unittest.TestCase):
+    client = PteroTests.client
+
+    def test_absent_receipt_is_detected_without_failing_contents_request(self):
+        client, calls = self.client([
+            {'data': [{'attributes': {'name': 'model_sync', 'is_file': False}}]},
+            {'data': []},
+        ])
+        self.assertIsNone(client.existing_receipt('a' * 64))
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all('/files/list?' in req.full_url for req in calls))
+
+    def test_absent_receipt_directory_is_not_read(self):
+        client, calls = self.client([{'data': []}])
+        self.assertIsNone(client.existing_receipt('a' * 64))
+        self.assertEqual(len(calls), 1)
+
+    def test_existing_receipt_is_read_after_listing(self):
+        receipt = {'version': 1, 'batch_id': 'a' * 64, 'complete': True, 'items': []}
+        client, calls = self.client([
+            {'data': [{'attributes': {'name': 'model_sync', 'is_file': False}}]},
+            {'data': [{'attributes': {'name': 'a' * 64 + '.json', 'is_file': True}}]}, receipt,
+        ])
+        self.assertEqual(client.existing_receipt('a' * 64), receipt)
+        self.assertIn('/files/contents?', calls[-1].full_url)
