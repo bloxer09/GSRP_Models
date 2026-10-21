@@ -1,6 +1,11 @@
 name: Check model server connection
 on:
   workflow_dispatch:
+    inputs:
+      batch_id:
+        description: Optional import batch to inspect (64 hex characters)
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -11,6 +16,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Check access without importing models
         env:
+          CHECK_BATCH_ID: ${{ inputs.batch_id }}
           PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
           PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
           PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
@@ -31,6 +37,15 @@ jobs:
                   target = 'model_sync' if directory == 'scriptfiles' else '.sync_staging'
                   exists = any(row['attributes']['name'] == target for row in rows)
                   print(directory + '/' + target + ' exists: ' + str(exists))
+              batch = os.environ.get('CHECK_BATCH_ID', '')
+              if batch:
+                  receipt = client.existing_receipt(batch)
+                  if receipt is None:
+                      print('Batch receipt: absent')
+                  else:
+                      print('Batch receipt complete: ' + str(receipt.get('complete')))
+                      for item in receipt.get('items', []):
+                          print('Import item: ' + str({k: item.get(k) for k in ['status', 'error_code', 'model_id', 'dbid']}))
               result = ('Panel authentication and gamemode file listing succeeded.\n'
                         + 'Server state: ' + str(resources.get('current_state', 'unknown')) + '.\n'
                         + 'som.amx present: ' + str(has_amx) + '.\n'
