@@ -86,9 +86,12 @@ class PteroClient:
                 self.sleep(2 ** attempt)
 
     def api(self, route, *, method='GET', payload=None):
-        body = self.request(self.base + '/' + route, method=method, authenticated=True,
-                            data=None if payload is None else json.dumps(payload).encode(),
-                            content_type=None if payload is None else 'application/json', limit=1024 * 1024)
+        try:
+            body = self.request(self.base + '/' + route, method=method, authenticated=True,
+                                data=None if payload is None else json.dumps(payload).encode(),
+                                content_type=None if payload is None else 'application/json', limit=1024 * 1024)
+        except SyncError as exc:
+            raise SyncError('Client API ' + route.split('?')[0] + ': ' + str(exc)) from None
         try:
             return json.loads(body) if body else {}
         except (ValueError, UnicodeError):

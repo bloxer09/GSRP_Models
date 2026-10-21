@@ -26,6 +26,11 @@ jobs:
               resources = client.api('resources')['attributes']
               listing = client.api('files/list?directory=%2Fgamemodes')['data']
               has_amx = any(row['attributes']['name'] == 'som.amx' and row['attributes']['is_file'] for row in listing)
+              for directory in ['scriptfiles', 'models']:
+                  rows = client.api('files/list?directory=%2F' + directory)['data']
+                  target = 'model_sync' if directory == 'scriptfiles' else '.sync_staging'
+                  exists = any(row['attributes']['name'] == target for row in rows)
+                  print(directory + '/' + target + ' exists: ' + str(exists))
               result = ('Panel authentication and gamemode file listing succeeded.\n'
                         + 'Server state: ' + str(resources.get('current_state', 'unknown')) + '.\n'
                         + 'som.amx present: ' + str(has_amx) + '.\n'

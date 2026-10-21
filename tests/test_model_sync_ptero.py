@@ -100,3 +100,14 @@ class HttpCompatibilityTests(unittest.TestCase):
         req = urllib.request.Request('https://wings.test/file')
         with self.assertRaises(SyncError):
             handler.redirect_request(req, None, 302, '', {}, 'http://wings.test/file')
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_api_error_identifies_route_without_query_or_credentials(self):
+        opened = Mock(side_effect=urllib.error.HTTPError('http://panel.test', 500, 'Error', {}, None))
+        client = PteroClient('http://panel.test', 'abcd', 'secret',
+                             allow_insecure_http=True, opener=opened, sleep=lambda _: None)
+        with self.assertRaisesRegex(SyncError, 'Client API files/contents: Pterodactyl request failed \(500\)') as raised:
+            client.api('files/contents?file=private-path')
+        self.assertNotIn('private-path', str(raised.exception))
+        self.assertNotIn('secret', str(raised.exception))
