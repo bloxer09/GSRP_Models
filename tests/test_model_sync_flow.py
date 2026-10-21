@@ -1,4 +1,6 @@
 import sys
+import io
+from contextlib import redirect_stdout
 import tempfile
 import unittest
 from pathlib import Path
@@ -59,3 +61,14 @@ class FlowTests(unittest.TestCase):
             pair.with_suffix('.txd').write_bytes(b'new')
             with self.assertRaises(Exception): sync_batch(root,batch,server)
             self.assertFalse(server.uploads)
+
+    def test_failure_diagnostic_names_exception_without_exposing_signed_url(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); pair=root/'pending_skins/1/man_base=7_slot=1'
+            pair.parent.mkdir(parents=True); pair.with_suffix('.dff').write_bytes(b'dff'); pair.with_suffix('.txd').write_bytes(b'txd')
+            output=io.StringIO()
+            with patch('model_sync.PteroClient',side_effect=OSError('https://secret.test/?token=private-key')), redirect_stdout(output):
+                self.assertEqual(main(['sync','--root',folder]),1)
+            self.assertIn('OSError',output.getvalue())
+            self.assertNotIn('secret.test',output.getvalue())
+            self.assertNotIn('private-key',output.getvalue())

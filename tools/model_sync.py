@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import traceback
 from model_sync_manifest import MAX_BATCH_BYTES, build_batches, canonical, digest, discover_pending, serialize_wire
 from model_sync_ptero import PteroClient, SyncError
 from model_sync_archive import publish_archive, validated_rows, verified_downloads
@@ -73,6 +74,7 @@ def main(argv=None):
         client = PteroClient(os.environ.get('PTERO_PANEL_URL', ''), os.environ.get('PTERO_SERVER_ID', ''), os.environ.get('PTERO_CLIENT_API_KEY', ''),
                              allow_insecure_http=os.environ.get('PTERO_ALLOW_INSECURE_HTTP') == 'true')
         for batch in batches:
+            summary(f'Processing batch {batch.batch_id}: {len(batch.items)} pending items.')
             receipt, downloaded = sync_batch(options.root, batch, client)
             commit, result = publish_archive(options.root, batch, receipt, downloaded)
             client.command(f'modelsync acknowledge {batch.batch_id} {commit}')
@@ -81,7 +83,12 @@ def main(argv=None):
         return 1 if errors else 0
     except (SyncError, OSError, ValueError, KeyError) as exc:
         # Transport errors intentionally contain no credentials or signed URLs.
-        summary(str(exc) if isinstance(exc, SyncError) else 'Model sync failed; pending files and server journal are retained for retry.')
+        if isinstance(exc, SyncError):
+            summary(str(exc))
+        else:
+            frames=[f for f in traceback.extract_tb(exc.__traceback__) if Path(f.filename).name.startswith('model_sync')]
+            where=f' at {Path(frames[-1].filename).name}:{frames[-1].lineno}' if frames else ''
+            summary(f'Model sync failed ({type(exc).__name__}{where}); pending files and server journal are retained for retry.')
         return 1
 
 
