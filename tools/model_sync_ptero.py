@@ -52,7 +52,7 @@ class PteroClient:
         self.sleep, self.clock = sleep, clock
         self.directories = {'/'}
 
-    def request(self, url, *, method='GET', data=None, authenticated=False, content_type=None, limit=105 * 1024 * 1024):
+    def request(self, url, *, method='GET', data=None, authenticated=False, content_type=None, limit=105 * 1024 * 1024, timeout=30):
         parsed = urllib.parse.urlsplit(url)
         if parsed.scheme not in self.schemes or not parsed.netloc or parsed.username or parsed.password:
             raise SyncError('Refused insecure transfer URL')
@@ -66,7 +66,7 @@ class PteroClient:
         for attempt in range(4):
             try:
                 req = urllib.request.Request(url, data=data, headers=headers, method=method)
-                with self.open(req, timeout=30) as response:
+                with self.open(req, timeout=timeout) as response:
                     body = response.read(limit + 1)
                     if len(body) > limit:
                         raise SyncError('Response exceeds configured size limit')
@@ -80,9 +80,9 @@ class PteroClient:
                     raise SyncError(f'Pterodactyl request failed ({exc.code})') from None
                 delay = exc.headers.get('Retry-After', '')
                 self.sleep(min(30, int(delay)) if delay.isdecimal() else 2 ** attempt)
-            except (urllib.error.URLError, TimeoutError, OSError):
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 if attempt == 3:
-                    raise SyncError('Pterodactyl transfer unavailable after retries') from None
+                    raise SyncError('Pterodactyl transfer unavailable after retries (' + type(getattr(exc, 'reason', exc)).__name__ + ')') from None
                 self.sleep(2 ** attempt)
 
     def api(self, route, *, method='GET', payload=None):
@@ -121,7 +121,7 @@ class PteroClient:
         signed = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(query)))
         boundary = 'model-sync-' + uuid.uuid4().hex
         body = (f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="{name}"\r\nContent-Type: application/octet-stream\r\n\r\n').encode() + data + f'\r\n--{boundary}--\r\n'.encode()
-        self.request(signed, method='POST', data=body, content_type=f'multipart/form-data; boundary={boundary}')
+        self.request(signed, method='POST', data=body, content_type=f'multipart/form-data; boundary={boundary}', timeout=180)
         listing = self.api('files/list?' + urllib.parse.urlencode({'directory': '/' + parent}))
         if not any(row['attributes']['name'] == name and row['attributes']['is_file'] and row['attributes']['size'] == len(data) for row in listing['data']):
             raise SyncError('Uploaded file size could not be confirmed')

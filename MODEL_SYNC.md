@@ -26,7 +26,7 @@ The existing root-level skin pair has no owner folder and will be reported, not 
 
 Temporary HTTP compatibility: set Actions variable `PTERO_ALLOW_INSECURE_HTTP=true` to permit an HTTP panel and HTTP signed transfers. Credentials and models then travel unencrypted. HTTPS remains the default, certificate validation remains enabled, authenticated cross-origin redirects and HTTPS-to-HTTP redirects remain blocked. Remove this variable after configuring HTTPS.
 
-The Client API uses signed Wings upload/download URLs; the runner must reach both the panel and Wings over HTTPS, or HTTP with the explicit compatibility setting above. API authorization failures are not retried. Temporary 429/5xx/network errors have bounded retries; receipt polling times out after 300 seconds. A job has a 30-minute outer limit.
+The Client API uses signed Wings upload/download URLs; the runner must reach both the panel and Wings over HTTPS, or HTTP with the explicit compatibility setting above. API authorization failures are not retried. Binary uploads allow 180 seconds per attempt; other requests allow 30 seconds. Temporary 429/5xx/network errors have bounded retries; receipt polling times out after 300 seconds. A job has a 30-minute outer limit.
 
 ## Retry and recovery
 

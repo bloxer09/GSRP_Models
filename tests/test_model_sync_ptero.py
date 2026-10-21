@@ -138,3 +138,15 @@ class MissingReceiptTests(unittest.TestCase):
         ])
         self.assertEqual(client.existing_receipt('a' * 64), receipt)
         self.assertIn('/files/contents?', calls[-1].full_url)
+
+
+class UploadTimeoutTests(unittest.TestCase):
+    def test_binary_upload_has_longer_bounded_timeout(self):
+        opened = Mock(side_effect=lambda req, timeout: Response(b''))
+        client = PteroClient('http://panel.test', 'abcd', 'secret', allow_insecure_http=True, opener=opened)
+        client.ensure_directory = Mock()
+        client.api = Mock(side_effect=[{'attributes': {'url': 'http://wings.test/upload?token=signed'}},
+                                       {'data': [{'attributes': {'name': 'skin.txd', 'is_file': True, 'size': 4}}]}])
+        client.upload('models/.sync_staging/' + 'a' * 64 + '/' + 'b' * 64 + '/skin.txd', b'data')
+        self.assertEqual(opened.call_args.kwargs['timeout'], 180)
+        self.assertIsNone(opened.call_args.args[0].get_header('Authorization'))
