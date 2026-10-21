@@ -24,7 +24,8 @@ jobs:
         run: |
           PYTHONPATH=tools python3 - <<'PY'
           import os
-          from urllib.parse import urlsplit
+          from urllib.parse import urlsplit, urlencode
+          import urllib.request, urllib.error
           from model_sync_ptero import PteroClient, SyncError
           try:
               client = PteroClient(os.environ['PTERO_PANEL_URL'], os.environ['PTERO_SERVER_ID'],
@@ -40,9 +41,26 @@ jobs:
                   print(directory + '/' + target + ' exists: ' + str(exists))
               transfer = urlsplit(client.api('files/upload')['attributes']['url'])
               print('Wings transfer origin: ' + str((transfer.scheme, transfer.hostname, transfer.port)))
+              try:
+                  origin = transfer.scheme + '://' + transfer.netloc + '/'
+                  with urllib.request.urlopen(origin, timeout=10) as probe:
+                      print('Wings probe HTTP: ' + str(probe.status))
+              except urllib.error.HTTPError as exc:
+                  print('Wings probe HTTP: ' + str(exc.code))
+              except (urllib.error.URLError, TimeoutError, OSError):
+                  print('Wings probe: unreachable from runner')
               batch = os.environ.get('CHECK_BATCH_ID', '')
               if batch:
                   receipt = client.existing_receipt(batch)
+                  stage = '/models/.sync_staging/' + batch
+                  children = client.api('files/list?' + urlencode({'directory': stage}))['data']
+                  for row in children[:33]:
+                      entry = row['attributes']
+                      if entry['is_file']:
+                          print('Staged manifest bytes: ' + str(entry.get('size')))
+                      elif len(entry['name']) == 64 and all(c in '0123456789abcdef' for c in entry['name']):
+                          files = client.api('files/list?' + urlencode({'directory': stage + '/' + entry['name']}))['data']
+                          print('Staged item file sizes: ' + str([f['attributes'].get('size') for f in files if f['attributes']['is_file']]))
                   if receipt is None:
                       print('Batch receipt: absent')
                   else:
