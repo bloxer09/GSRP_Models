@@ -54,16 +54,32 @@ def restore_deleted(batch, client, *, root=None):
                 staged=f'models/.sync_staging/{batch.batch_id}/{item.item_id}/{Path(source).name}'
                 plans[target]=(staged,source,expected,size)
     moves=[]
-    for target,(staged,source,expected,size) in plans.items():
+    staged_names={}
+    for number,(target,(staged,source,expected,size)) in enumerate(plans.items(),1):
         if staged is None: continue
+        def staged_bytes():
+            signed=client.api('files/download?'+urlencode({'file':'/'+staged}))['attributes']['url']
+            return client.request(signed,limit=size,timeout=180)
+        blob=None
         if root is not None:
-            blob=(root/source).read_bytes()
-            if len(blob)!=size or digest(blob)!=expected: raise SyncError('Pending file changed before staging upload')
-            client.upload(staged,blob)
-        signed=client.api('files/download?'+urlencode({'file':'/'+staged}))['attributes']['url']
-        blob=client.request(signed,limit=size,timeout=180)
+            parent=staged.rsplit('/',1)[0]
+            if parent not in staged_names:
+                client.ensure_directory(parent)
+                listing=client.api('files/list?'+urlencode({'directory':'/'+parent}))['data']
+                staged_names[parent]={r['attributes']['name']:r['attributes'].get('size')
+                                      for r in listing if r['attributes']['is_file']}
+            if staged_names[parent].get(Path(staged).name)==size:
+                blob=staged_bytes()
+            if blob is None or len(blob)!=size or digest(blob)!=expected:
+                local=(root/source).read_bytes()
+                if len(local)!=size or digest(local)!=expected: raise SyncError('Pending file changed before staging upload')
+                client.upload(staged,local)
+                blob=staged_bytes()
+        else:
+            blob=staged_bytes()
         if len(blob)!=size or digest(blob)!=expected:
             raise SyncError('Repair bytes differ from pending manifest; no files moved')
+        print(f'Recovery verified staged file {number}/{len(plans)}.',flush=True)
         moves.append({'from':staged,'to':target})
     if moves: client.api('files/rename',method='PUT',payload={'root':'/','files':moves})
     return models

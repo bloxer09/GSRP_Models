@@ -29,7 +29,7 @@ class Server:
         query = parse_qs(parsed.query)
         if parsed.path == 'files/list':
             parent = query['directory'][0].strip('/')
-            return {'data': [{'attributes': {'name': Path(p).name, 'is_file': True}} for p in self.files if str(Path(p).parent).replace('\\','/') == parent]}
+            return {'data': [{'attributes': {'name': Path(p).name, 'is_file': True, 'size': len(self.files[p])}} for p in self.files if str(Path(p).parent).replace('\\','/') == parent]}
         if parsed.path == 'files/download': return {'attributes': {'url': query['file'][0].strip('/')}}
         if route == 'files/rename':
             for row in payload['files']:
@@ -108,6 +108,29 @@ class PublicRecoveryTests(unittest.TestCase):
         self.assertEqual(len(self.server.moves),3)
         self.assertEqual(len(self.server.uploads),3)
         self.assertEqual(self.server.files['models/custom_skins/public_skins/1/skin.dff'],b'dff')
+    def test_retry_reuses_matching_staged_files_without_reupload(self):
+        self.server.files.update(Server(self.batch).files)
+        restore_deleted(self.batch,self.server,root=self.root)
+        self.assertEqual(self.server.uploads,[])
+        self.assertEqual(len(self.server.moves),3)
+    def test_retry_replaces_different_staged_bytes_from_verified_pending(self):
+        self.server.files.update(Server(self.batch).files)
+        staged=next(p for p in self.server.files if p.endswith('.txd'))
+        self.server.files[staged]=b'bad'
+        restore_deleted(self.batch,self.server,root=self.root)
+        self.assertEqual(self.server.uploads,[staged])
+        self.assertEqual(len(self.server.moves),3)
+    def test_retry_replaces_oversized_stage_without_downloading_it(self):
+        self.server.files.update(Server(self.batch).files)
+        staged=next(p for p in self.server.files if p.endswith('.txd'))
+        self.server.files[staged]=b'partial file too large'
+        original=self.server.request
+        def bounded_request(url,**kwargs):
+            self.assertLessEqual(len(self.server.files[url]),kwargs['limit'])
+            return original(url,**kwargs)
+        self.server.request=bounded_request
+        restore_deleted(self.batch,self.server,root=self.root)
+        self.assertEqual(self.server.uploads,[staged])
     def test_changed_pending_bytes_are_rejected_before_upload(self):
         (self.root/self.batch.items[0].source_txd).write_bytes(b'changed')
         with self.assertRaises(SyncError):restore_deleted(self.batch,self.server,root=self.root)
