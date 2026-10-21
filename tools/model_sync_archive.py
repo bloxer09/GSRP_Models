@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-from model_sync_manifest import canonical, digest
+from model_sync_manifest import canonical, digest, public_dff_name
 from model_sync_ptero import SyncError
 
 
@@ -33,9 +33,10 @@ def validated_rows(batch, receipt):
             model = row.get('model_id')
             if type(model) is not int or type(row.get('dbid')) is not int or row['dbid'] <= 0 or row.get('error_code'):
                 raise SyncError('Invalid persisted receipt')
-            if not (20001 <= model <= 30000 if item.kind == 'skin' else -1999 <= model <= -1000):
+            skin = item.kind in ('skin', 'public')
+            if not (20001 <= model <= 30000 if skin else -1999 <= model <= -1000):
                 raise SyncError('Invalid registered model ID')
-            if item.kind == 'skin' and row['dbid'] != model:
+            if skin and row['dbid'] != model:
                 raise SyncError('Skin persistence identity mismatch')
         elif row.get('status') != 'failed':
             raise SyncError('Receipt contains nonterminal items')
@@ -50,6 +51,9 @@ def verified_downloads(batch, receipt, client):
         if rows[item.item_id]['status'] != 'persisted':
             continue
         for path, expected, length in [(item.final_dff, item.dff_sha256, item.dff_bytes), (item.final_txd, item.txd_sha256, item.txd_bytes)]:
+            # Public variants share one model file; it was verified on first download.
+            if path in data and digest(data[path]) == expected:
+                continue
             blob = client.download('models/' + path)
             if len(blob) != length or digest(blob) != expected:
                 raise SyncError('Confirmed server file digest mismatch; inputs retained')
@@ -87,15 +91,29 @@ def reconcile_archive(root, batch, receipt, downloaded):
                    for source in item.source_hashes}
         unchanged = all(blob is not None and digest(blob) == item.source_hashes[source] for source, blob in current.items())
         # A newly added sidecar also changes the pending item.
-        sidecar = str(Path(item.source_dff).with_suffix('.model.json')).replace('\\', '/')
+        sidecar = item.sidecar
         if sidecar not in item.source_hashes and _path(root, sidecar).exists():
             unchanged = False
         if unchanged:
             removals.extend(item.source_hashes)
             if sidecar in current:
-                writes[str(Path(item.final_dff).with_suffix('.model.json')).replace('\\', '/')] = current[sidecar]
+                writes[item.final_sidecar] = current[sidecar]
         elif any(blob is not None for blob in current.values()):
             result.preserved.append(item.item_id)
+    # A shared public model stays pending until no remaining texture needs it.
+    removals = list(dict.fromkeys(removals))
+    leaving = set(removals)
+    for item in batch.items:
+        if item.kind != 'public' or item.source_dff not in leaving:
+            continue
+        _path(root, item.source_dff)
+        folder = root / Path(item.source_dff).parent
+        name = Path(item.source_dff).name
+        for texture in folder.glob('*.txd'):
+            relative = texture.relative_to(root).as_posix()
+            if relative not in leaving and public_dff_name(texture.name) == name:
+                removals.remove(item.source_dff); leaving.discard(item.source_dff)
+                break
     # No partial filesystem edits before all receipt/digest/conflict checks pass.
     report = f'model_imports/{batch.batch_id}.json'
     writes[report] = canonical({'manifest': batch.to_dict(), 'receipt': receipt}) + b'\n'

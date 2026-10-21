@@ -7,7 +7,12 @@ import re
 
 NAME = re.compile(r'[A-Za-z0-9_.=-]+\Z')
 HEX = re.compile(r'[0-9a-f]{64}\Z')
+VARIANT = re.compile(r'(.+)_v\d{1,3}\Z')
 MAX_BATCH_BYTES = 256 * 1024 * 1024
+# Public skins carry skintags.inc gender/race bits in the wire slot column.
+GENDERS = {'female': 0, 'male': 1}
+RACES = {'white': 0, 'black': 2, 'asian': 4, 'hispanic': 6}
+PENDING = [('pending_skins', 'skin'), ('pending_graffiti', 'graffiti'), ('pending_public_skins', 'public')]
 
 
 def canonical(value):
@@ -35,6 +40,17 @@ class ModelItem:
     txd_sha256: str
     source_hashes: dict
 
+    @property
+    def sidecar(self):
+        """Pending metadata path; public skins key metadata by texture, others by model."""
+        source = self.source_txd if self.kind == 'public' else self.source_dff
+        return str(Path(source).with_suffix('.model.json')).replace('\\', '/')
+
+    @property
+    def final_sidecar(self):
+        final = self.final_txd if self.kind == 'public' else self.final_dff
+        return str(Path(final).with_suffix('.model.json')).replace('\\', '/')
+
 
 @dataclass(frozen=True)
 class BatchManifest:
@@ -52,29 +68,81 @@ def _integer(value, low, high, label):
     return value
 
 
-def _item(root, path, kind):
-    relative = path.relative_to(root)
-    _, owner, filename = relative.parts
+def _owner(relative):
+    owner = relative.parts[1]
     if not owner.isascii() or not owner.isdecimal() or str(int(owner)) != owner:
         raise ValueError('owner folder must be a canonical positive DBID')
-    owner_id = _integer(int(owner), 1, 2147483647, 'owner DBID')
+    return _integer(int(owner), 1, 2147483647, 'owner DBID')
+
+
+def _payload(root, source, hashes):
+    if source.is_symlink() or not source.is_file():
+        raise ValueError('missing pair or symbolic link')
+    data = source.read_bytes()
+    if not data or data.startswith(b'version https://git-lfs.github.com/spec/'):
+        raise ValueError('empty file or Git LFS pointer')
+    if len(data) > 100 * 1024 * 1024:
+        raise ValueError('model exceeds 100 MiB upload limit')
+    hashes[source.relative_to(root).as_posix()] = digest(data)
+    return data
+
+
+def public_dff_name(txd_name):
+    """A public texture shares <ped>.dff when named <ped>_v<N>.txd."""
+    stem = txd_name[:-4]
+    match = VARIANT.fullmatch(stem)
+    return (match.group(1) if match else stem) + '.dff'
+
+
+def _public_item(root, path):
+    relative = path.relative_to(root)
+    collection = _owner(relative)
+    filename = relative.parts[2]
+    if not NAME.fullmatch(filename) or '..' in filename or path.suffix != '.txd':
+        raise ValueError('invalid filename')
+    dff = path.with_name(public_dff_name(filename))
+    sidecar = path.with_suffix('.model.json')
+    # On Windows exists() is case-insensitive; compare names too.
+    if dff.name not in {p.name for p in path.parent.iterdir()}:
+        raise ValueError('missing exact-case shared model filename')
+    hashes = {}
+    dff_data = _payload(root, dff, hashes)
+    txd_data = _payload(root, path, hashes)
+    if sidecar.is_symlink() or not sidecar.is_file() or sidecar.stat().st_size > 4096:
+        raise ValueError('public skins need a <texture>.model.json sidecar')
+    raw = sidecar.read_bytes()
+    metadata = json.loads(raw)
+    if not isinstance(metadata, dict) or metadata.keys() - {'base_model', 'gender', 'race'}:
+        raise ValueError('invalid metadata fields')
+    hashes[sidecar.relative_to(root).as_posix()] = digest(raw)
+    base = _integer(metadata.get('base_model'), 0, 311, 'skin base')
+    if base == 74:
+        raise ValueError('invalid vanilla skin base 74')
+    if metadata.get('gender') not in GENDERS or metadata.get('race') not in RACES:
+        raise ValueError('gender must be male/female and race white/black/asian/hispanic')
+    final = f'custom_skins/public_skins/{collection}/'
+    if len(final + filename) > 63 or len(final + dff.name) > 63:
+        raise ValueError('final model path exceeds 63 characters')
+    fields = dict(kind='public', owner_dbid=collection, base_model=base,
+                  slot=GENDERS[metadata['gender']] | RACES[metadata['race']],
+                  source_dff=dff.relative_to(root).as_posix(), source_txd=relative.as_posix(),
+                  final_dff=final + dff.name, final_txd=final + filename,
+                  dff_bytes=len(dff_data), txd_bytes=len(txd_data),
+                  dff_sha256=digest(dff_data), txd_sha256=digest(txd_data), source_hashes=hashes)
+    return ModelItem(item_id=digest(canonical(fields)), **fields)
+
+
+def _item(root, path, kind):
+    relative = path.relative_to(root)
+    owner_id = _owner(relative)
+    filename = relative.parts[2]
     if not NAME.fullmatch(filename) or '..' in filename or path.suffix != '.dff':
         raise ValueError('invalid filename')
     stem = filename[:-4]
     txd = path.with_suffix('.txd')
     sidecar = path.with_suffix('.model.json')
     hashes = {}
-    payloads = []
-    for source in (path, txd):
-        if source.is_symlink() or not source.is_file():
-            raise ValueError('missing pair or symbolic link')
-        data = source.read_bytes()
-        if not data or data.startswith(b'version https://git-lfs.github.com/spec/'):
-            raise ValueError('empty file or Git LFS pointer')
-        if len(data) > 100 * 1024 * 1024:
-            raise ValueError('model exceeds 100 MiB upload limit')
-        hashes[source.relative_to(root).as_posix()] = digest(data)
-        payloads.append(data)
+    payloads = [_payload(root, source, hashes) for source in (path, txd)]
     metadata = {}
     if sidecar.exists():
         if sidecar.is_symlink() or sidecar.stat().st_size > 4096:
@@ -118,13 +186,15 @@ def _item(root, path, kind):
 def discover_pending(root):
     root = Path(root)
     items, errors = [], []
-    for folder, kind in [('pending_skins', 'skin'), ('pending_graffiti', 'graffiti')]:
+    for folder, kind in PENDING:
         directory = root / folder
         if not directory.exists():
             continue
         if directory.is_symlink():
             errors.append(f'{folder}: symbolic link root')
             continue
+        # Public items are keyed by texture; their model may be shared.
+        key = '.txd' if kind == 'public' else '.dff'
         files = sorted(directory.rglob('*'))
         folded = {}
         for path in files:
@@ -143,20 +213,23 @@ def discover_pending(root):
                     raise ValueError('expected pending/<DBID>/<filename>')
                 if len(folded[rel.casefold()]) != 1 or path.suffix not in ('.dff', '.txd', '.json'):
                     raise ValueError('invalid extension or case collision')
-                if path.suffix != '.dff':
+                if path.suffix != key:
                     continue
-                # On Windows exists() is case-insensitive; compare names too.
-                siblings = {p.name for p in path.parent.iterdir()}
-                if path.with_suffix('.txd').name not in siblings:
-                    raise ValueError('missing exact-case texture filename')
-                item = _item(root, path, kind)
+                if kind == 'public':
+                    item = _public_item(root, path)
+                else:
+                    # On Windows exists() is case-insensitive; compare names too.
+                    siblings = {p.name for p in path.parent.iterdir()}
+                    if path.with_suffix('.txd').name not in siblings:
+                        raise ValueError('missing exact-case texture filename')
+                    item = _item(root, path, kind)
                 items.append(item)
                 consumed.update(item.source_hashes)
             except (ValueError, OSError, json.JSONDecodeError) as exc:
                 errors.append(f'{rel}: {exc}')
         for path in files:
             rel = path.relative_to(root).as_posix()
-            if path.is_file() and path.name != '.gitkeep' and path.suffix != '.dff' and rel not in consumed:
+            if path.is_file() and path.name != '.gitkeep' and path.suffix != key and rel not in consumed:
                 errors.append(f'{rel}: unpaired or invalid input')
     return sorted(items, key=lambda item: item.item_id), sorted(set(errors))
 

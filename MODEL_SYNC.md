@@ -1,6 +1,6 @@
 # Pending model import
 
-Push models to `pending_skins/<character DBID>/` or `pending_graffiti/<faction DBID>/`. Every model needs a matching, same-case `.dff` and `.txd`. Only these pending folders upload. The game server moves them through its pending folders into final paths and confirms database persistence. Actions then downloads and verifies the actual server files, archives them in `custom_skins/private_skins/<character DBID>/` or `custom_graffiti/<faction DBID>/`, and removes only unchanged successful pending inputs.
+Push models to `pending_skins/<character DBID>/`, `pending_graffiti/<faction DBID>/` or `pending_public_skins/<collection>/` (see Public skins). Every model needs a matching, same-case `.dff` and `.txd`. Only these pending folders upload. The game server moves them through its pending folders into final paths and confirms database persistence. Actions then downloads and verifies the actual server files, archives them in `custom_skins/private_skins/<character DBID>/` or `custom_graffiti/<faction DBID>/`, and removes only unchanged successful pending inputs.
 
 **Final GitHub folders are storage only. They never upload back to the server**, including manual/retry runs. Actions also never uploads directly into final server folders.
 
@@ -14,7 +14,19 @@ Either name both files `man_base=7_slot=1.dff` and `man_base=7_slot=1.txd`, or u
 
 Slots are 1–3; base models must be valid vanilla skins. If filename and sidecar both specify metadata, they must agree. Graffiti uses base 19477 unless its optional sidecar specifies `base_model`. Folder numbers are **database IDs**, never player IDs or runtime faction IDs. Use simple ASCII filenames; the complete final path must fit 63 characters. Do not use Git LFS pointers.
 
-The existing root-level skin pair has no owner folder and will be reported, not guessed or deleted. The existing `pending_skins/1/1.dff` and `1.txd` need a matching `1.model.json` with the intended base/slot, or explicit filename metadata. No existing uploads are modified automatically.
+## Public skins
+
+Skins nobody owns go in `pending_public_skins/<collection>/`. The collection number is only a folder namespace (not a character or faction), and archives land in `custom_skins/public_skins/<collection>/`. Each texture is one skin and needs its own sidecar; variants of one ped share a single model:
+
+```
+male01.dff               shared model
+male01_v1.txd            skin 1
+male01_v1.model.json     {"base_model": 7, "gender": "male", "race": "black"}
+male01_v2.txd            skin 2
+male01_v2.model.json     ...
+```
+
+`<ped>.txd` uses `<ped>.dff`; `<ped>_v<N>.txd` also uses `<ped>.dff`. Gender is `male`/`female`; race is `white`, `black`, `asian` or `hispanic`. The server registers each texture as a `SKIN_TYPE_PUBLIC` skin with a free custom ID and names it after the texture (`male01_v1`). A shared model is moved once; later variants reuse it only when the journal proves the same bytes were promoted, otherwise the item fails with `PATH_CONFLICT`. The shared `.dff` stays pending until its last texture has been archived.
 
 ## Deployment
 
@@ -26,7 +38,7 @@ The existing root-level skin pair has no owner folder and will be reported, not 
 
 Temporary HTTP compatibility: set Actions variable `PTERO_ALLOW_INSECURE_HTTP=true` to permit an HTTP panel and HTTP signed transfers. Credentials and models then travel unencrypted. HTTPS remains the default, certificate validation remains enabled, authenticated cross-origin redirects and HTTPS-to-HTTP redirects remain blocked. Remove this variable after configuring HTTPS.
 
-The Client API uses signed Wings upload/download URLs; the runner must reach both the panel and Wings over HTTPS, or HTTP with the explicit compatibility setting above. API authorization failures are not retried. Binary uploads allow 180 seconds per attempt; other requests allow 30 seconds. Temporary 429/5xx/network errors have bounded retries; receipt polling times out after 300 seconds. A job has a 30-minute outer limit.
+The Client API uses signed Wings upload/download URLs; the runner must reach both the panel and Wings over HTTPS, or HTTP with the explicit compatibility setting above. API authorization failures are not retried. Binary uploads allow 180 seconds per attempt; other requests allow 30 seconds. Temporary 429/5xx/network errors have bounded retries; receipt polling times out after 300 seconds. A job has a 4-hour outer limit, enough for a large public collection (about 45 batches).
 
 ## Retry and recovery
 
