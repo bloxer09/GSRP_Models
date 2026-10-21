@@ -1,0 +1,23 @@
+name: Retire legacy skins
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: model-import-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  retire:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: python3 -m unittest discover -s tests
+      - name: Back up and retire old skins on server
+        env:
+          PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
+          PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
+          PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
+          PTERO_CLIENT_API_KEY: ${{ secrets.PTERO_CLIENT_API_KEY }}
+        run: python3 tools/model_sync_maintenance.py

@@ -134,7 +134,7 @@ class PteroClient:
         return self.request(signed)
 
     def command(self, text):
-        if not re.fullmatch(r'modelsync (?:import [0-9a-f]{64}|acknowledge [0-9a-f]{64} [0-9a-f]{40,64})', text):
+        if not re.fullmatch(r'modelsync (?:import [0-9a-f]{64}|acknowledge [0-9a-f]{64} [0-9a-f]{40,64}|retirelegacy)', text):
             raise SyncError('Invalid model sync console command')
         self.api('command', method='POST', payload={'command': text})
 
