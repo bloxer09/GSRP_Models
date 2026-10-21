@@ -1,0 +1,32 @@
+name: Restore deleted skin files
+on:
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: Exact batch ID of one previously persisted skin with deleted files
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: model-import-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  restore:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: python3 -m unittest discover -s tests
+      - name: Restore verified staged pair and confirm original model
+        env:
+          RESTORE_BATCH_ID: ${{ inputs.batch_id }}
+          PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
+          PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
+          PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
+          PTERO_CLIENT_API_KEY: ${{ secrets.PTERO_CLIENT_API_KEY }}
+        run: python3 tools/model_sync_recover.py --restore-deleted --batch "$RESTORE_BATCH_ID"

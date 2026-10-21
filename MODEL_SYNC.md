@@ -48,3 +48,8 @@ python3 tools/model_sync.py sync --root . --dry-run
 ```
 
 Dry run performs no network writes. Invalid pending files produce a nonzero exit and remain unchanged. Use a clean automation checkout for real runs; archive commits are reconciled in disposable worktrees without resetting the invoking checkout. No force push is used.
+
+
+## Explicit repair after deleting persisted skin files
+
+Normal imports deliberately reject missing final files for an already persisted model. For an operator-requested restoration, run **Restore deleted skin files** with the exact batch ID. This manual-only repair accepts one skin whose completed receipt records `PATH_CONFLICT` and a previously persisted model ID. The original pending manifest must still match. It verifies both staged files against their original SHA-256 digests before requesting server-side renames into missing final paths; differing existing files are never overwritten. It performs no uploads into final folders and no database edits. The gamemode must then confirm persistence with the original model ID before final downloads are verified and archived. Retired assets and other failures are not eligible. Partial repairs can be retried when the existing files match exactly.
