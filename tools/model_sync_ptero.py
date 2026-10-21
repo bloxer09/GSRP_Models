@@ -128,7 +128,7 @@ class PteroClient:
 
     def download(self, path):
         safe_path(path)
-        if not re.fullmatch(r'models/custom_(?:skins/private_skins|graffiti)/[1-9][0-9]*/[A-Za-z0-9_.=-]+\.(?:dff|txd)', path):
+        if not re.fullmatch(r'models/custom_(?:skins/(?:private_skins|public_skins)|graffiti)/[1-9][0-9]*/[A-Za-z0-9_.=-]+\.(?:dff|txd)', path):
             raise SyncError('Only confirmed final model paths may be downloaded')
         signed = self.api('files/download?' + urllib.parse.urlencode({'file': '/' + path}))['attributes']['url']
         return self.request(signed)

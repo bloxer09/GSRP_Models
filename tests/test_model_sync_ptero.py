@@ -30,6 +30,20 @@ class PteroTests(unittest.TestCase):
         self.assertEqual(calls[0].get_header('Authorization'), 'Bearer secret')
         self.assertIsNone(calls[1].get_header('Authorization'))
 
+    def test_public_skin_final_download_keeps_signed_credentials_separate(self):
+        for name in ['army.dff', 'army_v1.txd']:
+            client, calls = self.client([{'attributes': {'url': 'https://wings.test/file?token=signed'}}, b'binary'])
+            self.assertEqual(client.download('models/custom_skins/public_skins/1/' + name), b'binary')
+            self.assertEqual(calls[0].get_header('Authorization'), 'Bearer secret')
+            self.assertIsNone(calls[1].get_header('Authorization'))
+
+    def test_pending_and_other_paths_are_not_downloadable_as_final_models(self):
+        client, calls = self.client([])
+        for path in ['models/pending_public_skins/1/army.dff', 'models/custom_skins/public_skins/1/army.model.json',
+                     'models/custom_skins/public_skins/0/army.dff', 'models/custom_skins/public_skins/1/../army.dff']:
+            with self.assertRaises(SyncError): client.download(path)
+        self.assertEqual(calls, [])
+
     def test_upload_to_final_folder_is_rejected(self):
         client, calls = self.client([])
         with self.assertRaises(SyncError):
