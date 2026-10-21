@@ -70,7 +70,8 @@ def main(argv=None):
         summary('No valid pending items. Archive folders are never upload inputs.')
         return 1 if errors else 0
     try:
-        client = PteroClient(os.environ.get('PTERO_PANEL_URL', ''), os.environ.get('PTERO_SERVER_ID', ''), os.environ.get('PTERO_CLIENT_API_KEY', ''))
+        client = PteroClient(os.environ.get('PTERO_PANEL_URL', ''), os.environ.get('PTERO_SERVER_ID', ''), os.environ.get('PTERO_CLIENT_API_KEY', ''),
+                             allow_insecure_http=os.environ.get('PTERO_ALLOW_INSECURE_HTTP') == 'true')
         for batch in batches:
             receipt, downloaded = sync_batch(options.root, batch, client)
             commit, result = publish_archive(options.root, batch, receipt, downloaded)

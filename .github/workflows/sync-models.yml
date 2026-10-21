@@ -26,6 +26,7 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Transfer and archive confirmed imports
         env:
+          PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
           PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
           PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
           PTERO_CLIENT_API_KEY: ${{ secrets.PTERO_CLIENT_API_KEY }}

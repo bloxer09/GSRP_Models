@@ -15,11 +15,15 @@ class SyncError(RuntimeError):
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def __init__(self, *, allow_insecure_http=False):
+        super().__init__()
+        self.allow_insecure_http = allow_insecure_http
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
         if req.has_header('Authorization') and (old.scheme, old.netloc) != (new.scheme, new.netloc):
             raise SyncError('Refused authenticated cross-origin redirect')
-        if new.scheme != 'https':
+        if new.scheme != 'https' and not (self.allow_insecure_http and old.scheme == new.scheme == 'http' and old.netloc == new.netloc):
             raise SyncError('Refused insecure redirect')
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -34,21 +38,23 @@ def safe_path(path):
 
 
 class PteroClient:
-    def __init__(self, panel, server, token, *, opener=None, sleep=time.sleep, clock=time.monotonic):
+    def __init__(self, panel, server, token, *, allow_insecure_http=False, opener=None, sleep=time.sleep, clock=time.monotonic):
         url = urllib.parse.urlsplit(panel)
-        if url.scheme != 'https' or not url.netloc or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
-            raise SyncError('PTERO_PANEL_URL must be an HTTPS origin')
+        schemes = ('https', 'http') if allow_insecure_http else ('https',)
+        if url.scheme not in schemes or not url.netloc or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
+            raise SyncError('PTERO_PANEL_URL must be an HTTPS origin (HTTP requires explicit opt-in)')
         if not re.fullmatch(r'[A-Za-z0-9-]+', server) or not token:
             raise SyncError('Missing or invalid Pterodactyl configuration')
         self.base = panel.rstrip('/') + '/api/client/servers/' + server
         self.token = token
-        self.open = opener or urllib.request.build_opener(SafeRedirect()).open
+        self.schemes = schemes
+        self.open = opener or urllib.request.build_opener(SafeRedirect(allow_insecure_http=allow_insecure_http)).open
         self.sleep, self.clock = sleep, clock
         self.directories = {'/'}
 
     def request(self, url, *, method='GET', data=None, authenticated=False, content_type=None, limit=105 * 1024 * 1024):
         parsed = urllib.parse.urlsplit(url)
-        if parsed.scheme != 'https' or parsed.username or parsed.password:
+        if parsed.scheme not in self.schemes or not parsed.netloc or parsed.username or parsed.password:
             raise SyncError('Refused insecure transfer URL')
         headers = {'Accept': 'application/json', 'User-Agent': 'Greenside-Model-Sync/1'}
         if authenticated:
