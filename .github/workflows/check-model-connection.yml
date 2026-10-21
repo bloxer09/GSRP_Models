@@ -24,6 +24,7 @@ jobs:
         run: |
           PYTHONPATH=tools python3 - <<'PY'
           import os
+          from urllib.parse import urlsplit
           from model_sync_ptero import PteroClient, SyncError
           try:
               client = PteroClient(os.environ['PTERO_PANEL_URL'], os.environ['PTERO_SERVER_ID'],
@@ -37,6 +38,8 @@ jobs:
                   target = 'model_sync' if directory == 'scriptfiles' else '.sync_staging'
                   exists = any(row['attributes']['name'] == target for row in rows)
                   print(directory + '/' + target + ' exists: ' + str(exists))
+              transfer = urlsplit(client.api('files/upload')['attributes']['url'])
+              print('Wings transfer origin: ' + str((transfer.scheme, transfer.hostname, transfer.port)))
               batch = os.environ.get('CHECK_BATCH_ID', '')
               if batch:
                   receipt = client.existing_receipt(batch)
