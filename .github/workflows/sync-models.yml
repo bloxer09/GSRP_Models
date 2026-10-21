@@ -5,6 +5,7 @@ on:
     paths:
       - 'pending_skins/**'
       - 'pending_graffiti/**'
+      - 'pending_public_skins/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -15,7 +16,7 @@ jobs:
   sync:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 240
     steps:
       - name: Check out current pending queue
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
