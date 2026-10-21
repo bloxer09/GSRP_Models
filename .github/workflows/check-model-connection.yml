@@ -1,0 +1,38 @@
+name: Check model server connection
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Check access without importing models
+        env:
+          PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
+          PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
+          PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
+          PTERO_CLIENT_API_KEY: ${{ secrets.PTERO_CLIENT_API_KEY }}
+        run: |
+          PYTHONPATH=tools python3 - <<'PY'
+          import os
+          from model_sync_ptero import PteroClient, SyncError
+          try:
+              client = PteroClient(os.environ['PTERO_PANEL_URL'], os.environ['PTERO_SERVER_ID'],
+                                   os.environ['PTERO_CLIENT_API_KEY'],
+                                   allow_insecure_http=os.environ.get('PTERO_ALLOW_INSECURE_HTTP') == 'true')
+              resources = client.api('resources')['attributes']
+              listing = client.api('files/list?directory=%2Fgamemodes')['data']
+              has_amx = any(row['attributes']['name'] == 'som.amx' and row['attributes']['is_file'] for row in listing)
+              result = ('Panel authentication and gamemode file listing succeeded.\n'
+                        + 'Server state: ' + str(resources.get('current_state', 'unknown')) + '.\n'
+                        + 'som.amx present: ' + str(has_amx) + '.\n'
+                        + 'No files uploaded or console commands sent. Build version still needs verification.\n')
+              print(result)
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+                  stream.write(result)
+          except (SyncError, OSError, ValueError, KeyError) as exc:
+              raise SystemExit(str(exc) if isinstance(exc, SyncError) else 'Connection check failed; inspect panel configuration and permissions.') from None
+          PY
