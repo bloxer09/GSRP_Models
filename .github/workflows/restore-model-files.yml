@@ -21,10 +21,11 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - run: python3 -m unittest discover -s tests
+      - run: GITHUB_STEP_SUMMARY=/dev/null python3 -m unittest discover -s tests
       - name: Restore verified staged pair and confirm original model
         env:
           RESTORE_BATCH_ID: ${{ inputs.batch_id }}
+          MODEL_SYNC_TRACE: 'true'
           PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
           PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
           PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}

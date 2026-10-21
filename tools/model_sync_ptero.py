@@ -1,5 +1,6 @@
 """Minimal Client API transport. Signed Wings URLs never get panel credentials."""
 import json
+import os
 import re
 import time
 import urllib.error
@@ -51,6 +52,7 @@ class PteroClient:
         self.open = opener or urllib.request.build_opener(SafeRedirect(allow_insecure_http=allow_insecure_http)).open
         self.sleep, self.clock = sleep, clock
         self.directories = {'/'}
+        self.trace = os.environ.get('MODEL_SYNC_TRACE') == 'true'
 
     def request(self, url, *, method='GET', data=None, authenticated=False, content_type=None, limit=105 * 1024 * 1024, timeout=30):
         parsed = urllib.parse.urlsplit(url)
@@ -64,14 +66,23 @@ class PteroClient:
         if content_type:
             headers['Content-Type'] = content_type
         for attempt in range(4):
+            label = ('Client API ' + parsed.path.removeprefix(urllib.parse.urlsplit(self.base).path + '/')
+                     if authenticated else 'File transfer ' + method)
+            started = self.clock()
+            if self.trace:
+                print(f'{label}: attempt {attempt + 1} started', flush=True)
             try:
                 req = urllib.request.Request(url, data=data, headers=headers, method=method)
                 with self.open(req, timeout=timeout) as response:
                     body = response.read(limit + 1)
                     if len(body) > limit:
                         raise SyncError('Response exceeds configured size limit')
+                    if self.trace:
+                        print(f'{label}: completed in {self.clock() - started:.1f}s ({len(body)} bytes)', flush=True)
                     return body
             except urllib.error.HTTPError as exc:
+                if self.trace:
+                    print(f'{label}: HTTP {exc.code} after {self.clock() - started:.1f}s', flush=True)
                 if exc.code == 404:
                     raise FileNotFoundError('Pterodactyl file not found') from None
                 if exc.code in (401, 403):
@@ -81,6 +92,8 @@ class PteroClient:
                 delay = exc.headers.get('Retry-After', '')
                 self.sleep(min(30, int(delay)) if delay.isdecimal() else 2 ** attempt)
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                if self.trace:
+                    print(f'{label}: {type(exc).__name__} after {self.clock() - started:.1f}s', flush=True)
                 if attempt == 3:
                     raise SyncError('Pterodactyl transfer unavailable after retries (' + type(getattr(exc, 'reason', exc)).__name__ + ')') from None
                 self.sleep(2 ** attempt)

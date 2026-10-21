@@ -23,6 +23,7 @@ jobs:
         env:
           CHECK_BUILD: ${{ inputs.inspect_build }}
           CHECK_BATCH_ID: ${{ inputs.batch_id }}
+          MODEL_SYNC_TRACE: 'true'
           PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
           PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
           PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}

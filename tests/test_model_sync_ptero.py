@@ -124,6 +124,20 @@ class HttpCompatibilityTests(unittest.TestCase):
 
 
 class DiagnosticTests(unittest.TestCase):
+    def test_trace_reports_request_boundary_without_signed_urls_or_tokens(self):
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        output = io.StringIO()
+        with patch.dict('os.environ', {'MODEL_SYNC_TRACE': 'true'}), redirect_stdout(output):
+            client, _ = PteroTests.client(self, [
+                {'attributes': {'url': 'https://wings.test/file?token=signed-secret'}}, b'binary'])
+            client.download('models/custom_graffiti/1/tag.dff')
+        self.assertIn('Client API files/download', output.getvalue())
+        self.assertIn('File transfer GET', output.getvalue())
+        self.assertIn('completed', output.getvalue())
+        for sensitive in ['signed-secret', 'wings.test', 'Bearer', 'tag.dff']:
+            self.assertNotIn(sensitive, output.getvalue())
+
     def test_api_error_identifies_route_without_query_or_credentials(self):
         opened = Mock(side_effect=urllib.error.HTTPError('http://panel.test', 500, 'Error', {}, None))
         client = PteroClient('http://panel.test', 'abcd', 'secret',

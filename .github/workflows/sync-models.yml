@@ -24,7 +24,7 @@ jobs:
           ref: main
           fetch-depth: 0
       - name: Test sync client
-        run: python3 -m unittest discover -s tests -v
+        run: GITHUB_STEP_SUMMARY=/dev/null python3 -m unittest discover -s tests -v
       - name: Transfer and archive confirmed imports
         env:
           PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
