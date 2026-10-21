@@ -2,6 +2,11 @@ name: Check model server connection
 on:
   workflow_dispatch:
     inputs:
+      inspect_build:
+        description: Compare deployed gamemode checksum without retaining its contents
+        required: false
+        type: boolean
+        default: false
       batch_id:
         description: Optional import batch to inspect (64 hex characters)
         required: false
@@ -16,6 +21,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Check access without importing models
         env:
+          CHECK_BUILD: ${{ inputs.inspect_build }}
           CHECK_BATCH_ID: ${{ inputs.batch_id }}
           PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
           PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
@@ -24,6 +30,7 @@ jobs:
         run: |
           PYTHONPATH=tools python3 - <<'PY'
           import os
+          import hashlib
           from urllib.parse import urlsplit, urlencode
           import urllib.request, urllib.error
           from model_sync_ptero import PteroClient, SyncError
@@ -49,6 +56,11 @@ jobs:
                   print('Wings probe HTTP: ' + str(exc.code))
               except (urllib.error.URLError, TimeoutError, OSError):
                   print('Wings probe: unreachable from runner')
+              if os.environ.get('CHECK_BUILD') == 'true':
+                  signed = client.api('files/download?' + urlencode({'file': '/gamemodes/som.amx'}))['attributes']['url']
+                  blob = client.request(signed, limit=64 * 1024 * 1024, timeout=180)
+                  print('Deployed som.amx SHA256: ' + hashlib.sha256(blob).hexdigest())
+                  del blob
               batch = os.environ.get('CHECK_BATCH_ID', '')
               if batch:
                   receipt = client.existing_receipt(batch)
