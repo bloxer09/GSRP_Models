@@ -8,6 +8,8 @@ import re
 NAME = re.compile(r'[A-Za-z0-9_.=-]+\Z')
 HEX = re.compile(r'[0-9a-f]{64}\Z')
 VARIANT = re.compile(r'(.+)_v\d{1,3}\Z')
+PUBLIC_SKIN_NAME = re.compile(r'(0|[1-9][0-9]*)_(male|female)_(white|black|asian|hispanic)(?:_v([1-9][0-9]{0,2}))?\Z')
+PRIVATE_SKIN_NAME = re.compile(r'([1-9][0-9]*)_([1-3])_(0|[1-9][0-9]*)_(male|female)_(white|black|asian|hispanic)\Z')
 MAX_BATCH_BYTES = 256 * 1024 * 1024
 # Public skins carry skintags.inc gender/race bits in the wire slot column.
 GENDERS = {'female': 0, 'male': 1}
@@ -87,9 +89,33 @@ def _payload(root, source, hashes):
     return data
 
 
+def skin_filename(stem, kind, owner):
+    """Numeric skin names carry all operator-supplied metadata."""
+    pattern = PUBLIC_SKIN_NAME if kind == 'public' else PRIVATE_SKIN_NAME
+    match = pattern.fullmatch(stem)
+    if not match:
+        if stem and stem[0].isdigit():
+            raise ValueError('invalid skin filename metadata')
+        return None  # Retain identities of the existing queued collection.
+    if kind == 'public':
+        base, gender, race, _ = match.groups()
+        slot = GENDERS[gender] | RACES[race]
+    else:
+        character, slot, base, gender, race = match.groups()
+        if int(character) != owner:
+            raise ValueError('filename character DBID must match owner folder')
+        slot = int(slot)
+    base = _integer(int(base), 0, 311, 'skin base')
+    if base == 74:
+        raise ValueError('invalid vanilla skin base 74')
+    return dict(base_model=base, slot=slot, gender=gender, race=race)
+
+
 def public_dff_name(txd_name):
     """A public texture shares <ped>.dff when named <ped>_v<N>.txd."""
     stem = txd_name[:-4]
+    if PUBLIC_SKIN_NAME.fullmatch(stem):
+        return stem + '.dff'
     match = VARIANT.fullmatch(stem)
     return (match.group(1) if match else stem) + '.dff'
 
@@ -108,13 +134,18 @@ def _public_item(root, path):
     hashes = {}
     dff_data = _payload(root, dff, hashes)
     txd_data = _payload(root, path, hashes)
-    if sidecar.is_symlink() or not sidecar.is_file() or sidecar.stat().st_size > 4096:
-        raise ValueError('public skins need a <texture>.model.json sidecar')
-    raw = sidecar.read_bytes()
-    metadata = json.loads(raw)
-    if not isinstance(metadata, dict) or metadata.keys() - {'base_model', 'gender', 'race'}:
-        raise ValueError('invalid metadata fields')
-    hashes[sidecar.relative_to(root).as_posix()] = digest(raw)
+    metadata = skin_filename(path.stem, 'public', collection)
+    if metadata is not None:
+        if sidecar.exists():
+            raise ValueError('filename skin metadata must not have a JSON sidecar')
+    else:
+        if sidecar.is_symlink() or not sidecar.is_file() or sidecar.stat().st_size > 4096:
+            raise ValueError('legacy public skins need a <texture>.model.json sidecar')
+        raw = sidecar.read_bytes()
+        metadata = json.loads(raw)
+        if not isinstance(metadata, dict) or metadata.keys() - {'base_model', 'gender', 'race'}:
+            raise ValueError('invalid metadata fields')
+        hashes[sidecar.relative_to(root).as_posix()] = digest(raw)
     base = _integer(metadata.get('base_model'), 0, 311, 'skin base')
     if base == 74:
         raise ValueError('invalid vanilla skin base 74')
@@ -143,7 +174,10 @@ def _item(root, path, kind):
     sidecar = path.with_suffix('.model.json')
     hashes = {}
     payloads = [_payload(root, source, hashes) for source in (path, txd)]
+    filename_metadata = skin_filename(stem, kind, owner_id) if kind == 'skin' else None
     metadata = {}
+    if filename_metadata is not None and sidecar.exists():
+        raise ValueError('filename skin metadata must not have a JSON sidecar')
     if sidecar.exists():
         if sidecar.is_symlink() or sidecar.stat().st_size > 4096:
             raise ValueError('invalid metadata file')
@@ -162,7 +196,7 @@ def _item(root, path, kind):
     for key, value in tokens.items():
         if key in metadata and metadata[key] != value:
             raise ValueError('conflicting filename/sidecar metadata')
-    values = {**tokens, **metadata}
+    values = filename_metadata if filename_metadata is not None else {**tokens, **metadata}
     if kind == 'skin':
         base = _integer(values.get('base_model'), 0, 311, 'skin base')
         if base == 74:

@@ -4,29 +4,49 @@ Push models to `pending_skins/<character DBID>/`, `pending_graffiti/<faction DBI
 
 **Final GitHub folders are storage only. They never upload back to the server**, including manual/retry runs. Actions also never uploads directly into final server folders.
 
-## Skin metadata
+## Skin filenames — no metadata JSON
 
-Either name both files `man_base=7_slot=1.dff` and `man_base=7_slot=1.txd`, or upload `man.dff`, `man.txd`, and `man.model.json`:
+Give the DFF and TXD the exact same basename, including capitalization. All skin details are in that name.
 
-```json
-{"base_model": 7, "slot": 1}
+| Kind | Basename | Example pair |
+| --- | --- | --- |
+| Public | `baseid_gender_race` | `7_male_black.dff` + `7_male_black.txd` |
+| Private | `charid_slot_baseid_gender_race` | `1_1_7_male_black.dff` + `1_1_7_male_black.txd` |
+
+Gender is `male` or `female`. Race is `white`, `black`, `asian` or `hispanic`. Use lowercase words and canonical decimal IDs (no leading zeros). Base IDs are 0–311 except 74. Private slots are 1–3. The private filename's character DBID must match its folder DBID; these are database IDs, never online player IDs.
+
+For Flint_Carter (character DBID 1), slot 1, base 7:
+
+```text
+pending_skins/1/1_1_7_male_black.dff
+pending_skins/1/1_1_7_male_black.txd
 ```
 
-Slots are 1â€“3; base models must be valid vanilla skins. If filename and sidecar both specify metadata, they must agree. Graffiti uses base 19477 unless its optional sidecar specifies `base_model`. Folder numbers are **database IDs**, never player IDs or runtime faction IDs. Use simple ASCII filenames; the complete final path must fit 63 characters. Do not use Git LFS pointers.
+Choose the gender/race that describes the supplied skin. The matching updated gamemode saves these tags for private skins as well as public skins. Do not add a `.model.json` sidecar to these filenames; filename-style entries reject sidecars rather than allow contradictory metadata.
 
 ## Public skins
 
-Skins nobody owns go in `pending_public_skins/<collection>/`. The collection number is only a folder namespace (not a character or faction), and archives land in `custom_skins/public_skins/<collection>/`. Each texture is one skin and needs its own sidecar; variants of one ped share a single model:
+Public skins go in `pending_public_skins/<collection>/`. The collection number is a positive folder namespace, not a character/faction ID. Archives go to `custom_skins/public_skins/<collection>/`.
 
-```
-male01.dff               shared model
-male01_v1.txd            skin 1
-male01_v1.model.json     {"base_model": 7, "gender": "male", "race": "black"}
-male01_v2.txd            skin 2
-male01_v2.model.json     ...
+```text
+pending_public_skins/1/7_male_black.dff
+pending_public_skins/1/7_male_black.txd
 ```
 
-`<ped>.txd` uses `<ped>.dff`; `<ped>_v<N>.txd` also uses `<ped>.dff`. Gender is `male`/`female`; race is `white`, `black`, `asian` or `hispanic`. The server registers each texture as a `SKIN_TYPE_PUBLIC` skin with a free custom ID and names it after the texture (`male01_v1`). A shared model is moved once; later variants reuse it only when the journal proves the same bytes were promoted, otherwise the item fails with `PATH_CONFLICT`. The shared `.dff` stays pending until its last texture has been archived.
+If multiple skins share a base ID, gender and race, append `_v1`, `_v2`, etc. (1–999). Each new variant has its own matching pair, so models with different geometry cannot accidentally share a DFF:
+
+```text
+pending_public_skins/1/7_male_black_v1.dff
+pending_public_skins/1/7_male_black_v1.txd
+pending_public_skins/1/7_male_black_v2.dff
+pending_public_skins/1/7_male_black_v2.txd
+```
+
+The server assigns each pair a free custom model ID. These filenames provide the vanilla base and tags, not the assigned custom ID. The full final model path must fit 63 characters. Do not use Git LFS pointers.
+
+The existing queued collection and its old sidecars remain supported solely to preserve its current item/batch identities and import receipts. Do not rename an already submitted batch as a retry: new names are new import identities. New uploads use the filename formats above. Internal receipts/reports retain their machine-readable format; no operator-authored JSON is required for a new skin.
+
+Graffiti remains in `pending_graffiti/<faction DBID>/` with a matching named DFF/TXD pair and default base 19477. Its existing filename `base=<ID>` override remains supported.
 
 ## Deployment
 
