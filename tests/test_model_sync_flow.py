@@ -72,3 +72,12 @@ class FlowTests(unittest.TestCase):
             self.assertIn('OSError',output.getvalue())
             self.assertNotIn('secret.test',output.getvalue())
             self.assertNotIn('private-key',output.getvalue())
+
+    def test_reset_guard_blocks_import_before_constructing_client(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); pair=root/'pending_skins/1/1_1_7_male_black'
+            pair.parent.mkdir(parents=True);pair.with_suffix('.dff').write_bytes(b'dff');pair.with_suffix('.txd').write_bytes(b'txd')
+            (root/'.skin-reset-required').write_text('Reset old registrations before importing renamed skins.')
+            with patch('model_sync.PteroClient') as constructor, redirect_stdout(io.StringIO()):
+                self.assertEqual(main(['sync','--root',folder]),1)
+                constructor.assert_not_called()

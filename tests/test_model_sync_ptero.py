@@ -59,11 +59,13 @@ class PteroTests(unittest.TestCase):
         with self.assertRaises(SyncError): client.download('models/custom_graffiti/1/tag.dff')
 
     def test_explicit_legacy_cleanup_command_is_allowed_without_extra_arguments(self):
-        client, calls = self.client([{}])
+        client, calls = self.client([{},{}])
         client.command('modelsync retirelegacy')
         self.assertEqual(len(calls), 1)
         self.assertEqual(json.loads(calls[0].data)['command'], 'modelsync retirelegacy')
         with self.assertRaises(SyncError): client.command('modelsync retirelegacy anything')
+        client.command('modelsync retireallskins')
+        with self.assertRaises(SyncError): client.command('modelsync retireallskins anything')
 
     def test_bad_console_batch_is_rejected(self):
         client, calls = self.client([])

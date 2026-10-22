@@ -90,3 +90,10 @@ Normal imports deliberately reject missing final files for an already persisted 
 ## Retire the old skin collection
 
 Deploy the matching gamemode first, then manually run **Retire legacy skins**. The server copies original `custom_skins` rows into `legacy_skin_backup` before changing registrations. It retires old public, private (including Flint_Carter), faction and VIP records while preserving `SKIN_TYPE_PUBLIC` records whose DFF and TXD are both under `custom_skins/public_skins/`. Each removal uses the existing retirement transaction: wardrobe ownership is removed, equipped legacy outfits fall back to vanilla skins, and old IDs/files are tombstoned against re-import. Missing model files do not prevent database cleanup. The maintenance receipt is `scriptfiles/model_sync/legacy_cleanup.json` and reports actual retired/failed counts. Files are retained for connected clients until restart; they are no longer available as active skins. Restart the server after successful retirement before continuing the public collection import. Graffiti and vanilla skins are not selected by this operation.
+
+
+## Full filename-collection reset
+
+The pre-reset repository is preserved by tag `codex/model-reset-backup-20261023-5f60872`. The rebuilt pending collection has 1,423 exact-case matching pairs, numbered `_vN` where necessary, with no metadata JSON sidecars. Every binary was checked against its original SHA-256 hash. Original-to-new mappings are retained locally in the reset preparation artifact.
+
+The `.skin-reset-required` marker blocks live imports. Deploy the matching `som_model_reset.amx` build first, then run **Reset all skin registrations**. This explicit workflow backs up and retires all custom skins, including already imported public skins, requires a successful full-scope receipt, and confirms a server restart. Native registrations therefore clear before re-import. It preserves graffiti and retains old server files/journal entries as recovery evidence. After verifying this workflow succeeded, remove the marker and run **Import pending models**. Archive folders and reports will be recreated only from confirmed server imports.

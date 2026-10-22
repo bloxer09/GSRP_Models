@@ -67,6 +67,9 @@ def main(argv=None):
             print(json.dumps(batch.to_dict(), indent=2))
         summary(f'Dry run: {len(items)} valid items, {len(errors)} validation failures; no transfers.')
         return 1 if errors else 0
+    if (options.root / '.skin-reset-required').exists():
+        summary('Skin reset required: back up/retire old registrations and restart the server before importing this renamed queue.')
+        return 1
     if not batches:
         summary('No valid pending items. Archive folders are never upload inputs.')
         return 1 if errors else 0
