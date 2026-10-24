@@ -46,7 +46,7 @@ The server assigns each pair a free custom model ID. These filenames provide the
 
 The existing queued collection and its old sidecars remain supported solely to preserve its current item/batch identities and import receipts. Do not rename an already submitted batch as a retry: new names are new import identities. New uploads use the filename formats above. Internal receipts/reports retain their machine-readable format; no operator-authored JSON is required for a new skin.
 
-Graffiti remains in `pending_graffiti/<faction DBID>/` with a matching named DFF/TXD pair and default base 19477. Its existing filename `base=<ID>` override remains supported.
+Graffiti remains in `pending_graffiti/<faction DBID>/` with a matching named DFF/TXD pair and default base 19477. Its existing filename `base=<ID>` override remains supported. The filename becomes the in-game name: underscores/dashes turn into spaces, each word is capitalised and `base=<ID>` is dropped (`Eastside_NMB.dff` → "Eastside NMB"), so name the pair after the tag, not the faction. Admins can rename a tag later with `/renamecustomgraffiti`.
 
 ## Deployment
 
