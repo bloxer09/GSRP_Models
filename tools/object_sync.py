@@ -76,6 +76,9 @@ def sync_objects(root, files, client, report=print):
 
 def summary(text):
     print(text)
+    # Annotations show on the run page without signing in; logs don't
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        print('::notice title=Object upload::' + text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
     if target := os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(target, 'a', encoding='utf-8') as stream:
             stream.write(text + '\n\n')
