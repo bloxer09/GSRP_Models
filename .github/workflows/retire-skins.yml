@@ -1,0 +1,41 @@
+name: Retire skins
+on:
+  workflow_dispatch:
+    inputs:
+      skin_ids:
+        description: 'Custom skin IDs to retire, e.g. 21489,21490 (permanent: the files and IDs stay reserved)'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: model-import-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  retire:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+      - name: Test retire client
+        run: GITHUB_STEP_SUMMARY=/dev/null python3 -m unittest discover -s tests
+      - name: Retire on the server and drop archived copies
+        env:
+          PTERO_PANEL_URL: ${{ vars.PTERO_PANEL_URL }}
+          PTERO_SERVER_ID: ${{ vars.PTERO_SERVER_ID }}
+          PTERO_ALLOW_INSECURE_HTTP: ${{ vars.PTERO_ALLOW_INSECURE_HTTP }}
+          PTERO_CLIENT_API_KEY: ${{ secrets.PTERO_CLIENT_API_KEY }}
+          SKIN_IDS: ${{ inputs.skin_ids }}
+        run: python3 tools/model_sync_retire.py "$SKIN_IDS" --root .
+      - name: Commit archive removals
+        if: always()
+        env:
+          SKIN_IDS: ${{ inputs.skin_ids }}
+        run: |
+          git add -A custom_skins
+          git diff --cached --quiet && exit 0
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Remove archives of retired skins $SKIN_IDS"
+          git push origin HEAD:main
