@@ -1,4 +1,4 @@
-"""custom_objects/<folder>/<file> -> server models/<folder>/<file>, uploaded directly.
+"""custom_objects/<folder>/<file> -> server models/custom_objects/<folder>/<file>, uploaded directly.
 
 Object models are registered by the gamemode itself (AddSimpleModel with fixed IDs), so unlike
 skins and graffiti they have no server import step. A server file of a different size is never
@@ -12,8 +12,8 @@ import urllib.parse
 from model_sync_ptero import PteroClient, SyncError, safe_path
 
 OBJECT_SOURCE = re.compile(r'custom_objects/([A-Za-z0-9_-]+)/([A-Za-z0-9_.-]+\.(?:dff|txd))')
-# Skin/graffiti folders and the import staging area belong to the model sync, never to objects
-RESERVED = {'custom_skins', 'custom_graffiti', 'pending_skins', 'pending_graffiti', 'pending_public_skins'}
+# Same layout as the source, beside the server's custom_skins/ and custom_graffiti/
+OBJECT_DESTINATION = re.compile(r'models/custom_objects/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.(?:dff|txd)')
 
 
 def discover_objects(root):
@@ -28,10 +28,10 @@ def discover_objects(root):
             continue
         source = path.relative_to(root).as_posix()
         match = OBJECT_SOURCE.fullmatch(source)
-        if path.is_symlink() or not match or match[1] in RESERVED or match[1].startswith('.'):
+        if path.is_symlink() or not match:
             errors.append(source)
             continue
-        found.append((source, f'models/{match[1]}/{match[2]}'))
+        found.append((source, 'models/' + source))
     return found, errors
 
 
@@ -51,9 +51,8 @@ class ObjectClient(PteroClient):
 
     def upload_object(self, path, data):
         safe_path(path)
-        match = re.fullmatch(r'models/([A-Za-z0-9_-]+)/[A-Za-z0-9_.-]+\.(?:dff|txd)', path)
-        if not match or match[1] in RESERVED or match[1].startswith('.'):
-            raise SyncError('Object uploads are allowed only in models/<folder>/')
+        if not OBJECT_DESTINATION.fullmatch(path):
+            raise SyncError('Object uploads are allowed only in models/custom_objects/<folder>/')
         self._put(path, data)
 
 
