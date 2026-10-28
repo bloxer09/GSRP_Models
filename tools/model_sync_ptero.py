@@ -125,6 +125,10 @@ class PteroClient:
         safe_path(path)
         if not re.fullmatch(r'models/\.sync_staging/[0-9a-f]{64}/(?:[0-9a-f]{64}/[A-Za-z0-9_.=-]+|manifest.tsv)', path):
             raise SyncError('Uploads are allowed only in batch staging')
+        self._put(path, data)
+
+    # Callers validate the destination first; this only transfers and confirms the size
+    def _put(self, path, data):
         parent, name = path.rsplit('/', 1)
         self.ensure_directory(parent)
         signed = self.api('files/upload')['attributes']['url']
